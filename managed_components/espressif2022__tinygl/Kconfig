@@ -1,0 +1,69 @@
+menu "TinyGL Features Configuration"
+
+config TGL_FEATURE_ARRAYS
+    bool "Enable Arrays Feature"
+    default y
+    help
+      Enable support for arrays feature in TinyGL.
+
+config TGL_FEATURE_DISPLAYLISTS
+    bool "Enable Display Lists Feature"
+    default y
+    help
+      Enable support for display lists feature in TinyGL.
+
+config TGL_FEATURE_POLYGON_OFFSET
+    bool "Enable Polygon Offset Feature"
+    default y
+    help
+      Enable support for polygon offset feature in TinyGL.
+
+menu "TinyGL Debug Options"
+
+config TGL_FEATURE_DEBUG
+    bool "Enable Debug Output"
+    default n
+    help
+      Enable debug output for TinyGL. This will enable detailed logs.
+      If enabled, DEBUG will be defined.
+
+endmenu
+
+menu "Pixel Format Options"
+
+config TGL_FEATURE_8_BITS
+    bool "Enable 8-bit External Pixel Format"
+
+config TGL_FEATURE_16_BITS
+    bool "Enable 16-bit External Pixel Format"
+
+config TGL_FEATURE_24_BITS
+    bool "Enable 24-bit External Pixel Format"
+    default y
+
+config TGL_FEATURE_32_BITS
+    bool "Enable 32-bit External Pixel Format"
+
+choice
+    prompt "Render Bits"
+    default TGL_FEATURE_RENDER_BITS_24
+    help
+      Choose the internal pixel format for rendering in TinyGL.
+
+config TGL_FEATURE_RENDER_BITS_15
+    bool "15-bit Rendering"
+
+config TGL_FEATURE_RENDER_BITS_16
+    bool "16-bit Rendering"
+
+config TGL_FEATURE_RENDER_BITS_24
+    bool "24-bit Rendering"
+
+config TGL_FEATURE_RENDER_BITS_32
+    bool "32-bit Rendering"
+
+endchoice
+
+endmenu
+
+endmenu

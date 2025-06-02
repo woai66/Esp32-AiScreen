@@ -1,0 +1,13 @@
+dependencies:
+  cmake_utilities:
+    version: 0.*
+  idf: '>=4.4'
+description: a Small, Free and Fast Subset of OpenGL*
+documentation: https://bellard.org/TinyGL/
+issues: https://github.com/espressif2022/TinyGL/issues
+repository: git://github.com/espressif2022/TinyGL.git
+repository_info:
+  commit_sha: 7ca5c2622acedc71a44a3a0b0ab581671b575c16
+  path: .
+url: https://github.com/espressif2022/TinyGL
+version: 0.4.1~1

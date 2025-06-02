@@ -1,0 +1,20 @@
+# ThorVG uses the CODEOWNERS file to automatically assign reviewers in the GitHub system. 
+# However, the presence of a CODEOWNER does not necessarily imply that they are the sole copyright owners of the code. 
+# For more information, please consult the AUTHORS file.
+
+* @hermet
+/src/renderer/sw_engine @mgrudzinska
+/src/renderer/gl_engine @RuiwenTang
+/src/renderer/wg_engine @SergeyLebedkin
+/src/loaders/external_webp/ @JSUYA
+/src/loaders/raw/ @JSUYA
+/src/loaders/tvg/ @mgrudzinska
+/src/loaders/svg/ @JSUYA @mgrudzinska
+/src/loaders/webp/ @JSUYA
+/src/bindings/capi @mgrudzinska
+/src/bindings/wasm @tinyjin
+/src/savers/gif/ @JSUYA
+/src/tools/svg2png/ @JSUYA
+/examples/ @JSUYA @RuiwenTang @SergeyLebedkin @tinyjin @mgrudzinska
+/test/* @JSUYA @RuiwenTang @SergeyLebedkin @tinyjin @mgrudzinska
+/.github/workflows/* @JSUYA
