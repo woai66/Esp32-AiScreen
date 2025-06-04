@@ -6,6 +6,6 @@ fctry,      data,   nvs,         ,          0x6000,
 factory,    app,    factory,     ,          4M
 voice_data, data,   fat,         ,          3890K
 model,      data,   spiffs,      ,          5168K,
-storage,      data,   spiffs,    ,          700K,
+storage,      data,   spiffs,    ,          750K,
 animation,    data,   spiffs,    ,          304K,
 weather,      data,   spiffs,    ,          1800K,

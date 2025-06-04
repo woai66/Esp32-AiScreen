@@ -1,4 +1,3 @@
-
 idf_component_register(
     SRC_DIRS 
         "." 
@@ -17,6 +16,16 @@ idf_component_register(
         "./tinyGL_cube"
         "./lottie_player"
         "./game_2048"
+    # REQUIRES
+    #     esp-sr
+    #     esp_sparkbot_bsp
+    #     nvs_flash
+    #     esp_wifi
+    #     esp_event
+    #     esp_netif
+    #     esp_http_client
+    #     unity
+    #     esp_codec_dev
     )
 target_compile_options(${COMPONENT_LIB} PRIVATE "-Wno-format" "-Wno-unused-variable")
 

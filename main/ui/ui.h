@@ -112,12 +112,15 @@ extern lv_obj_t *ui_netpanel;
 void ui_event_net(lv_event_t *e);
 extern char *url;
 
-// SCREEN:ui_camera
-void ui_camera_screen_init(void);
-extern lv_obj_t *ui_camera;
-extern lv_obj_t *ui_panel_camera;
-extern lv_obj_t *ui_camera_canvas;
-void ui_event_camera(lv_event_t *e);
+// SCREEN:ui_music_player
+void ui_music_player_screen_init(void);
+extern lv_obj_t *ui_music_player;
+extern lv_obj_t *ui_panel_music;
+extern lv_obj_t *ui_music_title;
+extern lv_obj_t *ui_music_play_btn;
+extern lv_obj_t *ui_music_progress;
+void ui_event_music_player(lv_event_t *e);
+static void mp3_play_task(void *pvParameters);
 
 void ui_event____initial_actions0(lv_event_t *e);
 extern lv_obj_t *ui____initial_actions0;

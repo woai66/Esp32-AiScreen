@@ -13,11 +13,12 @@
 
 #include "esp_mmap_assets.h"
 
-#define MMAP_AUDIO_FILES           3
-#define MMAP_AUDIO_CHECKSUM        0xC354
+#define MMAP_AUDIO_FILES           4
+#define MMAP_AUDIO_CHECKSUM        0xEA63
 
 enum MMAP_AUDIO_LISTS {
     MMAP_AUDIO_ECHO_WAV = 0,        /*!< echo.wav */
     MMAP_AUDIO_ECHO1_WAV = 1,        /*!< echo1.wav */
-    MMAP_AUDIO_MUYU_WAV = 2,        /*!< muyu.wav */
+    MMAP_AUDIO_JNTM_WAV = 2,        /*!< jntm.wav */
+    MMAP_AUDIO_MUYU_WAV = 3,        /*!< muyu.wav */
 };

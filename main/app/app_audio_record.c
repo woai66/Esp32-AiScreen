@@ -40,6 +40,8 @@
 
 static const char *TAG = "app_sr";
 
+audio_record_state_t result;
+
 typedef enum {
     MODE_IDLE,
     MODE_CHAT,
@@ -66,13 +68,14 @@ static esp_codec_dev_handle_t   spk_codec_dev   = NULL;
 
 static TaskHandle_t xFeedHandle;
 static TaskHandle_t xDetectHandle;
-static mmap_assets_handle_t asset_audio;
+mmap_assets_handle_t asset_audio;
 
 static bool                     g_voice_recording       = false;
 static bool                     g_audio_playing         = false;
 static bool                     g_face_updated          = false;
 static size_t                   g_stt_recorded_length   = 0;
 static int16_t                  *g_audio_record_buf     = NULL;
+static bool                     g_audio_paused          = false;
 
 static void audio_play_task(void *arg)
 {
@@ -217,13 +220,13 @@ static void audio_detect_task(void *pvParam)
         }
 
         if (res->wakeup_state == WAKENET_DETECTED) {
-            // ESP_LOGI(TAG, LOG_BOLD(LOG_COLOR_GREEN) "Wakeword detected");
+            ESP_LOGI(TAG, LOG_BOLD(LOG_COLOR_GREEN) "Wakeword detected");
             audio_record_state_t result = AUDIO_WAKENET_START;
             xQueueSend(g_result_que, &result, 10);
             /* Update face UI */
             ui_send_sys_event(ui_face, LV_EVENT_FACE_ASK, NULL);
         } else if (res->wakeup_state == WAKENET_CHANNEL_VERIFIED) {
-            // ESP_LOGI(TAG, LOG_BOLD(LOG_COLOR_GREEN) "Channel verified");
+            ESP_LOGI(TAG, LOG_BOLD(LOG_COLOR_GREEN) "Channel verified");
             afe_handle->disable_wakenet(afe_data);
             wait_speech_flag = true;
         }
@@ -289,7 +292,7 @@ static void audio_detect_task(void *pvParam)
 void audio_record_task(void *pvParam)
 {
     while (true) {
-        audio_record_state_t result;
+
         if (xQueueReceive(g_result_que, &result, portMAX_DELAY) == pdTRUE) {
             switch (result) {
             case AUDIO_PLAY_MUYU: {
@@ -304,6 +307,21 @@ void audio_record_task(void *pvParam)
                 g_audio_playing = false;
                 void *audio = (void *)mmap_assets_get_mem(asset_audio, MMAP_AUDIO_ECHO1_WAV);
                 uint32_t len = mmap_assets_get_size(asset_audio, MMAP_AUDIO_ECHO1_WAV);
+                esp_codec_dev_write(spk_codec_dev, audio, len);
+                break;
+                
+            }
+            case AUDIO_PLAY_PAUSE: {
+                ESP_LOGI(TAG, "Pause audio");
+                g_audio_paused = true;
+                esp_codec_dev_set_out_mute(spk_codec_dev, true);
+                break;
+            }
+            case AUDIO_PLAY_RESUME: {
+                ESP_LOGI(TAG, "Resume audio");
+                g_audio_paused = false;
+                void *audio = (void *)mmap_assets_get_mem(asset_audio, MMAP_AUDIO_JNTM_WAV);
+                uint32_t len = mmap_assets_get_size(asset_audio, MMAP_AUDIO_JNTM_WAV);
                 esp_codec_dev_write(spk_codec_dev, audio, len);
                 break;
             }
@@ -488,9 +506,26 @@ void app_sr_paly_muyu()
     }
 }
 
+
 void app_sr_play_echo1()
 {
     audio_record_state_t result = AUDIO_PLAY_ECHO1;
+    if(g_result_que){
+        xQueueSend(g_result_que, &result, 10);
+    }
+}
+
+void app_sr_play_pause()
+{
+    audio_record_state_t result = AUDIO_PLAY_PAUSE;
+    if(g_result_que){
+        xQueueSend(g_result_que, &result, 10);
+    }
+}
+
+void app_sr_play_resume()
+{
+    audio_record_state_t result = AUDIO_PLAY_RESUME;
     if(g_result_que){
         xQueueSend(g_result_que, &result, 10);
     }
@@ -514,52 +549,138 @@ static void app_sr_mmap_audio()
 
 esp_err_t app_sr_start(void)
 {
+    esp_err_t ret = ESP_OK;
+    
     /* SPIFF init */
-    // bsp_spiffs_mount();
     app_sr_mmap_audio();
 
     /* Audio buffer init */
     g_audio_record_buf = heap_caps_malloc(MAX_AUDIO_INPUT_LENGTH + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (g_audio_record_buf == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate audio buffer");
+        return ESP_ERR_NO_MEM;
+    }
 
+    /* Initialize codec first */
+    spk_codec_dev = bsp_extra_audio_codec_speaker_init();
+    if (!spk_codec_dev) {
+        ESP_LOGE(TAG, "Failed to initialize speaker codec");
+        return ESP_FAIL;
+    }
+
+    /* Configure codec */
+    esp_codec_dev_sample_info_t fs = {
+        .sample_rate = 16000,
+        .channel = 2,
+        .bits_per_sample = 16,
+    };
+    ret = esp_codec_dev_open(spk_codec_dev, &fs);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open codec device");
+        return ret;
+    }
+
+    /* Initialize AFE */
     models = esp_srmodel_init("model");
+    if (!models) {
+        ESP_LOGE(TAG, "Failed to initialize SR model");
+        return ESP_FAIL;
+    }
 
     afe_handle = &ESP_AFE_SR_HANDLE;
     afe_config_t afe_config = AFE_CONFIG_DEFAULT();
     afe_config.pcm_config.mic_num = 1;
     afe_config.pcm_config.total_ch_num = 2;
-
     afe_config.wakenet_model_name = esp_srmodel_filter(models, ESP_WN_PREFIX, NULL);
 
     esp_afe_sr_data_t *afe_data = afe_handle->create_from_config(&afe_config);
+    if (!afe_data) {
+        ESP_LOGE(TAG, "Failed to create AFE data");
+        return ESP_FAIL;
+    }
     ESP_LOGI(TAG, "load wakenet:%s", afe_config.wakenet_model_name);
 
+    /* Create queues */
     g_result_que = xQueueCreate(1, sizeof(audio_record_state_t));
-    ESP_RETURN_ON_FALSE(NULL != g_result_que, ESP_ERR_NO_MEM, TAG, "Failed create result queue");
+    if (g_result_que == NULL) {
+        ESP_LOGE(TAG, "Failed to create result queue");
+        return ESP_ERR_NO_MEM;
+    }
 
+    /* Create tasks with proper delays between them */
     BaseType_t ret_val = xTaskCreatePinnedToCore(audio_feed_task, "Feed Task", 4 * 1024, afe_data, 5, &xFeedHandle, 0);
-    ESP_RETURN_ON_FALSE(pdPASS == ret_val, ESP_FAIL, TAG,  "Failed create audio feed task");
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio feed task");
+        return ESP_FAIL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100)); // Add delay between task creation
 
     ret_val = xTaskCreatePinnedToCore(audio_detect_task, "Detect Task", 6 * 1024, afe_data, 5, &xDetectHandle, 1);
-    ESP_RETURN_ON_FALSE(pdPASS == ret_val, ESP_FAIL, TAG,  "Failed create audio detect task");
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio detect task");
+        return ESP_FAIL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     ret_val = xTaskCreatePinnedToCore(audio_record_task, "Audio Record Task", 4 * 1024, g_result_que, 1, NULL, 0);
-    ESP_RETURN_ON_FALSE(pdPASS == ret_val, ESP_FAIL, TAG,  "Failed create audio handler task");
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio handler task");
+        return ESP_FAIL;
+    }
 
-    /*
-    Step 1: Send captured audio data to Speech-to-Text (STT) server for processing.
-    Step 2: Receive and handle the text response from Baidu Cloud STT service.
-    Step 3: Forward the received text response to the Text-to-Speech (TTS) server.
-    Step 4: Forward the audio response to audio_play_task.
-    */
+    /* Create event groups and queues */
     g_audio_chat_queue = xQueueCreate(16, sizeof(char *));
-    g_stt_event_group = xEventGroupCreate();
-    g_audio_tts_queue = xQueueCreate(16, sizeof(char *));
-    g_queue_audio_play = xQueueCreate(1, sizeof(audio_data_t));
+    if (g_audio_chat_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create audio chat queue");
+        return ESP_ERR_NO_MEM;
+    }
 
-    xTaskCreatePinnedToCore(app_stt_task, "audio_stt", 1024 * 4, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(audio_chat_task, "audio_chat", 1024 * 6, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(audio_tts_task, "audio_tts", 1024 * 6, NULL, 6, NULL, 1);
-    xTaskCreate(audio_play_task, "audio_play_task", 1024 * 5, NULL, 15, NULL);
+    g_stt_event_group = xEventGroupCreate();
+    if (g_stt_event_group == NULL) {
+        ESP_LOGE(TAG, "Failed to create STT event group");
+        return ESP_ERR_NO_MEM;
+    }
+
+    g_audio_tts_queue = xQueueCreate(16, sizeof(char *));
+    if (g_audio_tts_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create TTS queue");
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Create audio play queue */
+    g_queue_audio_play = xQueueCreate(1, sizeof(audio_data_t));
+    if (g_queue_audio_play == NULL) {
+        ESP_LOGE(TAG, "Failed to create audio play queue");
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Create remaining tasks */
+    ret_val = xTaskCreatePinnedToCore(app_stt_task, "audio_stt", 4 * 1024, NULL, 2, NULL, 1);
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create STT task");
+        return ESP_FAIL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    ret_val = xTaskCreatePinnedToCore(audio_chat_task, "audio_chat", 6 * 1024, NULL, 1, NULL, 0);
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio chat task");
+        return ESP_FAIL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    ret_val = xTaskCreatePinnedToCore(audio_tts_task, "audio_tts", 6 * 1024, NULL, 6, NULL, 1);
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create TTS task");
+        return ESP_FAIL;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    ret_val = xTaskCreate(audio_play_task, "audio_play_task", 5 * 1024, NULL, 15, NULL);
+    if (ret_val != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio play task");
+        return ESP_FAIL;
+    }
 
     return ESP_OK;
 }

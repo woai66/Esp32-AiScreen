@@ -22,12 +22,17 @@ typedef enum {
     AUDIO_VAD_WAIT,
     AUDIO_PLAY_MUYU,
     AUDIO_PLAY_ECHO1,
+    AUDIO_PLAY_PAUSE,
+    AUDIO_PLAY_RESUME,
 } audio_record_state_t;
+
 
 esp_err_t app_sr_start(void);
 
 void app_sr_paly_muyu();
 void app_sr_play_echo1();
+void app_sr_play_pause();
+void app_sr_play_resume();
 
 #ifdef __cplusplus
 }
