@@ -1,0 +1,5 @@
+dependencies:
+  espressif/esp-sr:
+    version: ">=1.0.0"
+  espressif/esp_codec_dev:
+    version: ">=1.0.0"

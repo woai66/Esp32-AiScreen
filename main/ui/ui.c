@@ -9,6 +9,7 @@
 #include "esp_err.h"
 #include "esp_check.h"
 #include "ui.h"
+#include "esp_log.h"
 #include "ui_helpers.h"
 #include "bsp/esp-bsp.h"
 #include "tinyGL_cube.h"
@@ -42,6 +43,13 @@ void weather_Animation(lv_obj_t *TargetObject, int delay);
 void riseup_Animation(lv_obj_t *TargetObject, int delay);
 void opaon_Animation(lv_obj_t *TargetObject, int delay);
 void gonde_txt_Animation(lv_obj_t *TargetObject, int delay);
+
+// 音乐播放器变量定义
+lv_obj_t *ui_music_player = NULL;
+lv_obj_t *ui_panel_music = NULL;
+lv_obj_t *ui_music_title = NULL;
+lv_obj_t *ui_music_play_btn = NULL;
+lv_obj_t *ui_music_progress = NULL;
 
 // SCREEN: ui_home
 void ui_home_screen_init(void);
@@ -119,12 +127,17 @@ lv_obj_t *ui_netpanel;
 void ui_event_net(lv_event_t *e);
 char *url = ESP_SPARKBOT_URL;
 
-// SCREEN:ui_camera
-void ui_camera_screen_init(void);
-lv_obj_t *ui_camera;
-lv_obj_t *ui_panel_camera;
-lv_obj_t *ui_camera_canvas;
-void ui_event_camera(lv_event_t *e);
+// SCREEN:ui_mp3
+void ui_mp3_screen_init(void);
+lv_obj_t *ui_mp3;
+lv_obj_t *ui_panel_mp3;
+lv_obj_t *ui_mp3_title;
+lv_obj_t *ui_mp3_progress;
+lv_obj_t *ui_mp3_time;
+lv_obj_t *ui_mp3_play_btn;
+bool ui_mp3_is_playing = false;
+static lv_timer_t *timer_mp3 = NULL;
+void ui_event_mp3(lv_event_t *e);
 
 void ui_event____initial_actions0(lv_event_t *e);
 lv_obj_t *ui____initial_actions0;
@@ -288,8 +301,7 @@ void ui_event_home(lv_event_t *e)
         opaon_Animation(ui_date, 0);
         falldown_Animation(title_panel, 0);
         lv_obj_set_parent(title_panel, ui_Panel1);
-
-                
+        
         // 在进入home界面时播放echo1.wav
         extern void app_sr_play_echo1(void);
         app_sr_play_echo1();
@@ -302,7 +314,7 @@ void ui_event_home(lv_event_t *e)
     if ((event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) ||
             (event_code == LV_EVENT_SCREEN_PRIVIOUS)) {
         lv_indev_wait_release(lv_indev_get_act());
-        _ui_screen_change(&ui_camera, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_camera_screen_init);
+        _ui_screen_change(&ui_mp3, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_mp3_screen_init);
     }
     if (event_code == LV_EVENT_LONG_PRESSED) {
         _ui_screen_change(&ui_net, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_net_screen_init);
@@ -350,13 +362,58 @@ void ui_event_muyuplay(lv_event_t *e)
     }
 }
 
-static void win_camera_timer_cb(lv_timer_t *tmr)
+// MP3播放器初始化函数
+void ui_mp3_screen_init(void)
 {
-    camera_fb_t *pic = esp_camera_fb_get();
-    if (pic) {
-        esp_camera_fb_return(pic);
-        lv_canvas_set_buffer(ui_camera_canvas, pic->buf, BSP_LCD_H_RES, BSP_LCD_V_RES, LV_IMG_CF_TRUE_COLOR);
-    }
+    // 创建基本容器
+    ui_mp3 = lv_obj_create(NULL);
+    lv_obj_clear_flag(ui_mp3, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(ui_mp3, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    
+    ui_panel_mp3 = lv_obj_create(ui_mp3);
+    lv_obj_set_width(ui_panel_mp3, BSP_LCD_H_RES);
+    lv_obj_set_height(ui_panel_mp3, 40);
+    lv_obj_set_align(ui_panel_mp3, LV_ALIGN_TOP_MID);
+    lv_obj_clear_flag(ui_panel_mp3, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(ui_panel_mp3, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui_panel_mp3, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui_panel_mp3, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    
+    // 创建音乐标题标签
+    ui_mp3_title = lv_label_create(ui_mp3);
+    lv_obj_set_width(ui_mp3_title, BSP_LCD_H_RES - 20);
+    lv_obj_set_style_text_align(ui_mp3_title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(ui_mp3_title, LV_ALIGN_TOP_MID, 0, 50);
+    lv_label_set_text(ui_mp3_title, "MP3 Player");
+    lv_obj_set_style_text_font(ui_mp3_title, &lv_font_montserrat_14, 0);
+    
+    // 创建播放/暂停按钮
+    ui_mp3_play_btn = lv_label_create(ui_mp3);
+    lv_obj_set_width(ui_mp3_play_btn, 50);
+    lv_obj_set_height(ui_mp3_play_btn, 50);
+    lv_obj_align(ui_mp3_play_btn, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(ui_mp3_play_btn, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(ui_mp3_play_btn, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(ui_mp3_play_btn, LV_SYMBOL_PLAY);
+    
+    // 创建进度条
+    ui_mp3_progress = lv_bar_create(ui_mp3);
+    lv_obj_set_width(ui_mp3_progress, BSP_LCD_H_RES - 40);
+    lv_obj_set_height(ui_mp3_progress, 10);
+    lv_obj_align(ui_mp3_progress, LV_ALIGN_BOTTOM_MID, 0, -50);
+    lv_bar_set_value(ui_mp3_progress, 0, LV_ANIM_OFF);
+    
+    // 创建时间显示
+    ui_mp3_time = lv_label_create(ui_mp3);
+    lv_obj_set_width(ui_mp3_time, BSP_LCD_H_RES - 40);
+    lv_obj_align(ui_mp3_time, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_style_text_align(ui_mp3_time, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(ui_mp3_time, "0:00 / 0:00");
+    
+    // 添加事件处理
+    lv_obj_add_event_cb(ui_mp3, ui_event_mp3, LV_EVENT_ALL, NULL);
+    
+    ESP_LOGI(TAG, "MP3 player UI initialized");
 }
 
 static void fish_lottie_timer_player_cb(lv_timer_t *tmr)
@@ -524,7 +581,7 @@ void ui_event_game(lv_event_t *e)
     if ((event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) ||
             (event_code == LV_EVENT_SCREEN_NEXT)) {
         lv_indev_wait_release(lv_indev_get_act());
-        _ui_screen_change(&ui_camera, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_home_screen_init);
+        _ui_screen_change(&ui_mp3, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_home_screen_init);
     }
     if ((event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_RIGHT) ||
             (event_code == LV_EVENT_SCREEN_PRIVIOUS)) {
@@ -566,37 +623,95 @@ void ui_event_net(lv_event_t *e)
     }
 }
 
-void ui_event_camera(lv_event_t *e)
+#include "app_mp3_player.h"
+
+// MP3播放器的定时器回调函数
+static void mp3_timer_cb(lv_timer_t *tmr)
+{
+    // 从MP3播放器获取当前进度
+    int progress = app_mp3_player_get_progress();
+    
+    // 更新进度条
+    lv_bar_set_value(ui_mp3_progress, progress, LV_ANIM_ON);
+    
+    // 获取当前位置和总时长
+    int curr_sec = app_mp3_player_get_position();
+    int total_sec = app_mp3_player_get_duration();
+    
+    int curr_min = curr_sec / 60;
+    curr_sec = curr_sec % 60;
+    
+    int total_min = total_sec / 60;
+    int total_sec_remainder = total_sec % 60;
+    
+    static char time_txt[32];
+    snprintf(time_txt, sizeof(time_txt), "%d:%02d / %d:%02d", 
+             curr_min, curr_sec, total_min, total_sec_remainder);
+    lv_label_set_text(ui_mp3_time, time_txt);
+    
+    // 根据播放状态更新播放/暂停按钮
+    if (app_mp3_player_is_playing()) {
+        lv_label_set_text(ui_mp3_play_btn, LV_SYMBOL_PAUSE);
+    } else {
+        lv_label_set_text(ui_mp3_play_btn, LV_SYMBOL_PLAY);
+    }
+}
+
+void ui_event_mp3(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t *target = lv_event_get_target(e);
 
     if (event_code == LV_EVENT_SCREEN_LOAD_START) {
-        ESP_LOGI(TAG, "### Load camera ###");
-        lv_obj_set_parent(title_panel, ui_camera);
-        timer_camera = lv_timer_create(win_camera_timer_cb, 10, NULL);
+        ESP_LOGI(TAG, "### Load MP3 player ###");
+        lv_obj_set_parent(title_panel, ui_panel_mp3);
+        timer_mp3 = lv_timer_create(mp3_timer_cb, 1000, NULL);  // 每秒更新一次
+        
+        // 设置初始歌曲标题
+        lv_label_set_text(ui_mp3_title, "Demo Song - ESP32 Player");
     }
 
     if ((event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) ||
             (event_code == LV_EVENT_SCREEN_NEXT)) {
 
-        if (timer_camera) {
-            lv_timer_del(timer_camera);
-            timer_camera = NULL;
+        if (timer_mp3) {
+            lv_timer_del(timer_mp3);
+            timer_mp3 = NULL;
         }
 
         lv_indev_wait_release(lv_indev_get_act());
         _ui_screen_change(&ui_home, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_home_screen_init);
     }
+    
     if ((event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_RIGHT) ||
             (event_code == LV_EVENT_SCREEN_PRIVIOUS)) {
 
-        if (timer_camera) {
-            lv_timer_del(timer_camera);
-            timer_camera = NULL;
+        if (timer_mp3) {
+            lv_timer_del(timer_mp3);
+            timer_mp3 = NULL;
         }
 
         lv_indev_wait_release(lv_indev_get_act());
         _ui_screen_change(&ui_game, LV_SCR_LOAD_ANIM_NONE, 0, 0, &ui_game_screen_init);
+    }
+    
+    // 按钮1短按 - 播放/暂停
+    if (event_code == LV_EVENT_PRESSED) {
+        ui_mp3_is_playing = !ui_mp3_is_playing;
+        
+        if (ui_mp3_is_playing) {
+            ESP_LOGI(TAG, "begin play");// 播放音乐
+            app_mp3_player_play("jntm.wav");
+
+            lv_label_set_text(ui_mp3_play_btn, LV_SYMBOL_PAUSE);
+            // 实际调用播放MP3函数
+        } else {
+            // 暂停音乐
+            ESP_LOGI(TAG, "pause play");
+            app_mp3_player_pause();
+            lv_label_set_text(ui_mp3_play_btn, LV_SYMBOL_PLAY);
+            // 实际调用暂停MP3函数
+        }
     }
 }
 
@@ -656,7 +771,7 @@ void ui_init(void)
     ui_fish_screen_init();
     ui_game_screen_init();
     ui_net_screen_init();
-    ui_camera_screen_init();
+    ui_mp3_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_obj_add_event_cb(ui____initial_actions0, ui_event____initial_actions0, LV_EVENT_ALL, NULL);
 
@@ -678,8 +793,8 @@ void ui_init(void)
     ui_pages[5].page = ui_2048;
     ui_pages[5].name = "2048";
 
-    ui_pages[6].page = ui_camera;
-    ui_pages[6].name = "camera";
+    ui_pages[6].page = ui_mp3;
+    ui_pages[6].name = "mp3player";
 
     lv_disp_load_scr(ui____initial_actions0);
     lv_disp_load_scr(ui_home);
